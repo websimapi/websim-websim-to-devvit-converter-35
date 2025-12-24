@@ -127,6 +127,23 @@ router.post('/api/delete', async (req, res) => {
     }
 });
 
+// --- Avatar Proxy Route ---
+router.get('/api/proxy/avatar/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        // Attempt to get the latest Snoovatar from Reddit
+        const user = await reddit.getUserByUsername(username);
+        let url = null;
+        if (user) {
+            url = await user.getSnoovatarUrl();
+        }
+        res.redirect(url || 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png');
+    } catch (e) {
+        // Fallback silently if user not found or API error
+        res.redirect('https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png');
+    }
+});
+
 // --- JSON "File" Upload Routes (Redis-backed) ---
 router.post('/api/json/:key', async (req, res) => {
     try {

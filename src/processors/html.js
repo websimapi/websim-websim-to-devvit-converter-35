@@ -124,7 +124,8 @@ export function processHTML(htmlContent, filename, analyzer) {
     html = html.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
 
     // 5. Replace WebSim Avatar URLs in HTML attributes
-    html = html.replace(/https:\/\/images\.websim\.(ai|com)\/avatar\/[^"']+/g, 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png');
+    // Replaces https://images.websim.ai/avatar/username with /api/proxy/avatar/username
+    html = html.replace(/https:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"'\s]+)/g, '/api/proxy/avatar/$1');
 
     return { html, extractedScripts };
 }

@@ -14,9 +14,12 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
     }
     
     // Generic WebSim URL Replacements (Fix CSP issues & Hot-swap Identity)
-    code = code.replace(/https:\/\/images\.websim\.ai\/avatar\/|https:\/\/images\.websim\.com\/avatar\//g, 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png?user=');
-    // Replace full literal avatar strings if found
-    code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/[^"']+["']/g, '"https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png"');
+    // We redirect WebSim avatar URLs to our local /api/proxy/avatar/:username endpoint.
+    // This allows the server to look up the real Snoovatar on the fly.
+    code = code.replace(/https:\/\/images\.websim\.ai\/avatar\/|https:\/\/images\.websim\.com\/avatar\//g, '/api/proxy/avatar/');
+    
+    // Replace full literal avatar strings if found (e.g. "https://.../avatar/someuser")
+    code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/([^"']+)["']/g, '"/api/proxy/avatar/$2"');
 
     // Calculate relative path to root for asset corrections
     const depth = (filename.match(/\//g) || []).length;
@@ -77,21 +80,19 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
             },
             Literal: rewritePaths,
             TemplateLiteral: (node) => {
-                // Smart Swap: Detect Avatar URLs (either original WebSim or Regex-replaced Redditstatic)
-                // Pattern: `.../avatar/${user.username}` OR `.../avatar_default...?user=${user.username}`
+                // Smart Swap: Detect Avatar URLs
+                // Pattern: `.../avatar/${user.username}` OR `.../api/proxy/avatar/${user.username}`
                 if (node.quasis.length === 2 && node.expressions.length === 1) {
                     const prefix = node.quasis[0].value.raw;
                     const isWebSim = prefix.includes('images.websim.ai/avatar/') || prefix.includes('images.websim.com/avatar/');
-                    const isSwapped = prefix.includes('redditstatic.com/avatars/') && prefix.includes('?user=');
+                    const isProxy = prefix.includes('/api/proxy/avatar/');
                     
-                    if (isWebSim || isSwapped) {
+                    if (isWebSim || isProxy) {
                         const expr = node.expressions[0];
-                        // Check if expression is accessing a 'username' property (e.g. post.username)
                         if (expr.type === 'MemberExpression' && expr.property.type === 'Identifier' && expr.property.name === 'username') {
-                            // Extract the object part (e.g. "post")
                             const objectCode = code.slice(expr.object.start, expr.object.end);
-                            // Replace the entire template literal with the avatar_url property
-                            const replacement = `(${objectCode}.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")`;
+                            // Prefer cached avatar_url, fallback to proxy which fetches realtime
+                            const replacement = `(${objectCode}.avatar_url || "/api/proxy/avatar/" + ${objectCode}.username)`;
                             magic.overwrite(node.start, node.end, replacement);
                             hasChanges = true;
                         }
@@ -108,13 +109,12 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
                     if (left.type === 'Literal' && typeof left.value === 'string') {
                         const val = left.value;
                         const isWebSim = val.includes('images.websim.ai/avatar/') || val.includes('images.websim.com/avatar/');
-                        const isSwapped = val.includes('redditstatic.com/avatars/') && val.includes('?user=');
+                        const isProxy = val.includes('/api/proxy/avatar/');
                         
-                        if (isWebSim || isSwapped) {
-                            // Check right side for member expression ending in username
+                        if (isWebSim || isProxy) {
                             if (right.type === 'MemberExpression' && right.property.type === 'Identifier' && right.property.name === 'username') {
                                 const objectCode = code.slice(right.object.start, right.object.end);
-                                const replacement = `(${objectCode}.avatar_url || "https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png")`;
+                                const replacement = `(${objectCode}.avatar_url || "/api/proxy/avatar/" + ${objectCode}.username)`;
                                 magic.overwrite(node.start, node.end, replacement);
                                 hasChanges = true;
                             }
