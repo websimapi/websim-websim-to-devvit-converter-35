@@ -34,13 +34,31 @@ export const avatarInjector = `
     async function resolve(username, imgEl) {
         if (!username) return;
         
+        const applyUrl = (url) => {
+             const currentSrc = imgEl.getAttribute('src') || imgEl.src;
+             // Update if URL differs OR if we are still sitting on a placeholder
+             if (currentSrc !== url || currentSrc.includes(PLACEHOLDER_PREFIX)) {
+                 // Hide during swap/load to prevent broken image icon
+                 imgEl.style.opacity = '0';
+                 
+                 const onFinish = () => {
+                     imgEl.style.transition = 'opacity 0.2s ease-in';
+                     imgEl.style.opacity = '1';
+                 };
+                 
+                 imgEl.addEventListener('load', onFinish, { once: true });
+                 imgEl.addEventListener('error', onFinish, { once: true });
+                 
+                 imgEl.src = url;
+             } else {
+                 // Ensure visible if checks pass
+                 imgEl.style.opacity = '1';
+             }
+        };
+
         // 1. Check Cache
         if (CACHE.has(username)) {
-            const url = CACHE.get(username);
-            // Only update if needed to avoid flickering
-            if (imgEl.getAttribute('src') !== url && imgEl.src !== url) {
-                imgEl.src = url;
-            }
+            applyUrl(CACHE.get(username));
             return;
         }
 
@@ -69,7 +87,7 @@ export const avatarInjector = `
             // Verify the img still wants this avatar (hasn't been reused/changed while waiting)
             const currentSrc = imgEl.getAttribute('src') || imgEl.src;
             if (currentSrc && currentSrc.includes(PLACEHOLDER_PREFIX + username)) {
-                imgEl.src = url;
+                applyUrl(url);
             }
         } catch(e) { console.error(TAG, e); }
     }
@@ -81,6 +99,9 @@ export const avatarInjector = `
         
         // Check for our marker
         if (src.includes(PLACEHOLDER_PREFIX)) {
+            // Hide immediately to prevent glitch
+            node.style.opacity = '0';
+            
             const parts = src.split(PLACEHOLDER_PREFIX);
             if (parts.length > 1) {
                 // Remove any trailing query params or hashes
@@ -106,14 +127,18 @@ export const avatarInjector = `
 
     // Start
     const startObserver = () => {
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+        const root = document.documentElement || document.body;
+        if (!root) return;
+        
+        observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
         document.querySelectorAll('img').forEach(check);
     };
 
-    if (document.body) {
-        startObserver();
-    } else {
+    if (document.readyState === 'loading') {
+        if (document.documentElement) startObserver();
         window.addEventListener('DOMContentLoaded', startObserver);
+    } else {
+        startObserver();
     }
 })();
 `;
