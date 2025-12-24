@@ -14,13 +14,12 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
     }
     
     // Generic WebSim URL Replacements (Fix CSP issues & Hot-swap Identity)
-    // We redirect WebSim avatar URLs to our local /api/proxy/avatar/:username endpoint.
-    // This allows the server to look up the real Snoovatar on the fly.
-    // Enhanced regex to catch http/https, ai/com, and potential trailing slashes case-insensitively
-    code = code.replace(/https?:\/\/images\.websim\.(?:ai|com)\/avatar\/?/gi, '/api/proxy/avatar/');
+    // We replace WebSim avatar URLs with a local placeholder "/_websim_avatar_/username".
+    // A client-side polyfill (AvatarInjector) will detect these placeholders and inject the real Snoovatar URL.
+    code = code.replace(/https:\/\/images\.websim\.ai\/avatar\/|https:\/\/images\.websim\.com\/avatar\//g, '/_websim_avatar_/');
     
     // Replace full literal avatar strings if found (e.g. "https://.../avatar/someuser")
-    code = code.replace(/["']https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"']+)["']/gi, '"/api/proxy/avatar/$1"');
+    code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/([^"']+)["']/g, '"/_websim_avatar_/$2"');
 
     // Calculate relative path to root for asset corrections
     const depth = (filename.match(/\//g) || []).length;
@@ -82,18 +81,18 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
             Literal: rewritePaths,
             TemplateLiteral: (node) => {
                 // Smart Swap: Detect Avatar URLs
-                // Pattern: `.../avatar/${user.username}` OR `.../api/proxy/avatar/${user.username}`
+                // Pattern: `.../avatar/${user.username}` OR `.../_websim_avatar_/${user.username}`
                 if (node.quasis.length === 2 && node.expressions.length === 1) {
                     const prefix = node.quasis[0].value.raw;
                     const isWebSim = prefix.includes('images.websim.ai/avatar/') || prefix.includes('images.websim.com/avatar/');
-                    const isProxy = prefix.includes('/api/proxy/avatar/');
+                    const isPlaceholder = prefix.includes('/_websim_avatar_/');
                     
-                    if (isWebSim || isProxy) {
+                    if (isWebSim || isPlaceholder) {
                         const expr = node.expressions[0];
                         if (expr.type === 'MemberExpression' && expr.property.type === 'Identifier' && expr.property.name === 'username') {
                             const objectCode = code.slice(expr.object.start, expr.object.end);
-                            // Prefer cached avatar_url, fallback to proxy which fetches realtime
-                            const replacement = `(${objectCode}.avatar_url || "/api/proxy/avatar/" + ${objectCode}.username)`;
+                            // Prefer cached avatar_url, fallback to placeholder which Client Injector will swap
+                            const replacement = `(${objectCode}.avatar_url || "/_websim_avatar_/" + ${objectCode}.username)`;
                             magic.overwrite(node.start, node.end, replacement);
                             hasChanges = true;
                         }
@@ -110,12 +109,12 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
                     if (left.type === 'Literal' && typeof left.value === 'string') {
                         const val = left.value;
                         const isWebSim = val.includes('images.websim.ai/avatar/') || val.includes('images.websim.com/avatar/');
-                        const isProxy = val.includes('/api/proxy/avatar/');
+                        const isPlaceholder = val.includes('/_websim_avatar_/');
                         
-                        if (isWebSim || isProxy) {
+                        if (isWebSim || isPlaceholder) {
                             if (right.type === 'MemberExpression' && right.property.type === 'Identifier' && right.property.name === 'username') {
                                 const objectCode = code.slice(right.object.start, right.object.end);
-                                const replacement = `(${objectCode}.avatar_url || "/api/proxy/avatar/" + ${objectCode}.username)`;
+                                const replacement = `(${objectCode}.avatar_url || "/_websim_avatar_/" + ${objectCode}.username)`;
                                 magic.overwrite(node.start, node.end, replacement);
                                 hasChanges = true;
                             }

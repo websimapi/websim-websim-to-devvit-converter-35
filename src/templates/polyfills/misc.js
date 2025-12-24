@@ -23,80 +23,97 @@ export const upload = w.upload;
 export const collection = w.collection;
 `;
 
-export const avatarPolyfill = `
-// [WebSim] Avatar Hot-Swap Polyfill
-// Detects placeholders and fetches real avatar via Bridge/Proxy
+export const avatarInjector = `
+// [WebSim] Avatar Injector - Hot-swaps placeholder URLs for real Snoovatars
 (function() {
-    const processed = new WeakSet();
+    const TAG = "[AvatarInjector]";
+    const PLACEHOLDER_PREFIX = '/_websim_avatar_/';
+    const CACHE = new Map();
+    const PENDING = new Map();
 
-    const swapAvatar = async (img) => {
-        if (processed.has(img)) return;
-        processed.add(img);
-
-        const username = img.dataset.websimAvatar;
+    async function resolve(username, imgEl) {
         if (!username) return;
-
-        // console.log('[Avatar] Swapping for:', username);
-
-        try {
-            // 1. Force a real network fetch to ensure the proxy is hit
-            // This bypasses potential img src caching/stalling in webviews
-            const res = await fetch('/api/proxy/avatar/' + username);
-            if (!res.ok) throw new Error('Proxy error');
-            
-            // 2. Create a local blob URL
-            const blob = await res.blob();
-            const objectUrl = URL.createObjectURL(blob);
-            
-            // 3. Swap the src
-            img.onload = () => {
-                img.style.display = ''; // Unhide if hidden
-                img.removeAttribute('data-websim-avatar');
-            };
-            img.src = objectUrl;
-            
-        } catch (e) {
-            console.warn('[Avatar] Failed to swap:', username, e);
-            // Fallback to static if proxy fails
-            img.src = 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png';
-            img.style.display = '';
+        
+        // 1. Check Cache
+        if (CACHE.has(username)) {
+            const url = CACHE.get(username);
+            // Only update if needed to avoid flickering
+            if (imgEl.getAttribute('src') !== url && imgEl.src !== url) {
+                imgEl.src = url;
+            }
+            return;
         }
-    };
 
-    const run = () => {
-        document.querySelectorAll('img[data-websim-avatar]').forEach(swapAvatar);
-    };
+        // 2. Fetch (deduplicated)
+        if (!PENDING.has(username)) {
+             // console.log(TAG, "Fetching avatar for", username);
+             PENDING.set(username, fetch('/api/lookup/avatar/' + username)
+                 .then(r => r.json())
+                 .then(d => {
+                     const url = d.url;
+                     CACHE.set(username, url);
+                     return url;
+                 })
+                 .catch(e => {
+                     console.warn(TAG, "Failed to lookup", username, e);
+                     const def = 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png';
+                     CACHE.set(username, def);
+                     return def;
+                 })
+             );
+        }
 
-    // Run immediately and observe
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run);
-    } else {
-        run();
+        // 3. Apply when ready
+        try {
+            const url = await PENDING.get(username);
+            // Verify the img still wants this avatar (hasn't been reused/changed while waiting)
+            const currentSrc = imgEl.getAttribute('src') || imgEl.src;
+            if (currentSrc && currentSrc.includes(PLACEHOLDER_PREFIX + username)) {
+                imgEl.src = url;
+            }
+        } catch(e) { console.error(TAG, e); }
     }
 
-    const observer = new MutationObserver((mutations) => {
-        let needsRun = false;
-        for (const m of mutations) {
-            if (m.addedNodes.length) {
-                // Quick check for optimization
-                for (const n of m.addedNodes) {
-                    if (n.nodeType === 1 && (n.matches?.('img[data-websim-avatar]') || n.querySelector?.('img[data-websim-avatar]'))) {
-                        needsRun = true; 
-                        break;
-                    }
-                }
-            } else if (m.type === 'attributes' && m.attributeName === 'data-websim-avatar') {
-                needsRun = true;
+    function check(node) {
+        if (node.tagName !== 'IMG') return;
+        const src = node.getAttribute('src') || node.src;
+        if (!src) return;
+        
+        // Check for our marker
+        if (src.includes(PLACEHOLDER_PREFIX)) {
+            const parts = src.split(PLACEHOLDER_PREFIX);
+            if (parts.length > 1) {
+                // Remove any trailing query params or hashes
+                const username = parts[1].split(/[?#]/)[0];
+                resolve(username, node);
             }
         }
-        if (needsRun) run();
+    }
+
+    // Observer
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            if (m.type === 'childList') {
+                m.addedNodes.forEach(node => {
+                    if (node.tagName === 'IMG') check(node);
+                    if (node.querySelectorAll) node.querySelectorAll('img').forEach(check);
+                });
+            } else if (m.type === 'attributes' && m.attributeName === 'src') {
+                check(m.target);
+            }
+        }
     });
 
-    observer.observe(document.body, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true, 
-        attributeFilter: ['data-websim-avatar'] 
-    });
+    // Start
+    const startObserver = () => {
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+        document.querySelectorAll('img').forEach(check);
+    };
+
+    if (document.body) {
+        startObserver();
+    } else {
+        window.addEventListener('DOMContentLoaded', startObserver);
+    }
 })();
 `;

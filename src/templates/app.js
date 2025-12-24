@@ -127,12 +127,24 @@ router.post('/api/delete', async (req, res) => {
     }
 });
 
-// --- Avatar Proxy Route ---
-router.get('/api/proxy/avatar/:username', async (req, res) => {
-    let { username } = req.params;
-    // Strip extensions if present (common in legacy game code, e.g. user + ".png")
-    username = username.replace(/\.[a-z0-9]+$/i, '');
+// --- Avatar Lookup Route (Client Injection) ---
+router.get('/api/lookup/avatar/:username', async (req, res) => {
+    const { username } = req.params;
+    try {
+        const user = await reddit.getUserByUsername(username);
+        let url = null;
+        if (user) {
+            url = await user.getSnoovatarUrl();
+        }
+        res.json({ url: url || 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png' });
+    } catch (e) {
+        res.json({ url: 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png' });
+    }
+});
 
+// --- Avatar Proxy Route (Legacy/Fallback) ---
+router.get('/api/proxy/avatar/:username', async (req, res) => {
+    const { username } = req.params;
     try {
         // Attempt to get the latest Snoovatar from Reddit
         const user = await reddit.getUserByUsername(username);
@@ -140,8 +152,6 @@ router.get('/api/proxy/avatar/:username', async (req, res) => {
         if (user) {
             url = await user.getSnoovatarUrl();
         }
-        // Cache result for 1 hour to reduce API hits
-        res.setHeader('Cache-Control', 'public, max-age=3600');
         res.redirect(url || 'https://www.redditstatic.com/avatars/avatar_default_02_FF4500.png');
     } catch (e) {
         // Fallback silently if user not found or API error
