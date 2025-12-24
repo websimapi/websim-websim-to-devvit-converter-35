@@ -16,6 +16,7 @@ import {
     websimSocketPolyfill,
     websimStubsJs,
     websimPackageJs,
+    avatarPolyfill,
     jsxDevProxy,
     validateScript,
     setupScript,
@@ -279,7 +280,7 @@ export default {
         shimCode += '\n';
     }
 
-    const combinedPolyfills = [shimCode, simpleLoggerJs, webAudioPolyfill, websimSocketPolyfill, websimStubsJs].join('\n\n');
+    const combinedPolyfills = [shimCode, simpleLoggerJs, webAudioPolyfill, websimSocketPolyfill, websimStubsJs, avatarPolyfill].join('\n\n');
     clientFolder.file("websim_polyfills.js", combinedPolyfills);
     clientFolder.file("websim_package.js", websimPackageJs);
     clientFolder.file("jsx-dev-proxy.js", jsxDevProxy);

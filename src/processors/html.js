@@ -124,8 +124,20 @@ export function processHTML(htmlContent, filename, analyzer) {
     html = html.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
 
     // 5. Replace WebSim Avatar URLs in HTML attributes
-    // Replaces https://images.websim.ai/avatar/username with /api/proxy/avatar/username
-    html = html.replace(/https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"'\s]+)/gi, '/api/proxy/avatar/$1');
+    
+    // STRATEGY: Hot-Swap via Client-Side Polyfill
+    // Instead of setting src="/api/proxy/..." directly (which can stall in some webviews),
+    // we set it to a transparent pixel and add a data attribute.
+    // The 'avatarPolyfill' script will detect this, fetch the blob, and swap it in.
+    
+    // Regex matches: src="https://images.websim.ai/avatar/USERNAME" (handles ' and ")
+    html = html.replace(
+        /src=(["'])https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"']+)\1/gi, 
+        'src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-websim-avatar="$2"'
+    );
+
+    // Fallback: Replace any remaining occurrences (e.g. in CSS or other attributes) with the proxy path directly
+    html = html.replace(/https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"'\s\)]+)/gi, '/api/proxy/avatar/$1');
 
     return { html, extractedScripts };
 }

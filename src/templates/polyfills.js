@@ -10,6 +10,7 @@ export * from './polyfills/misc.js';
 // removed websimStubsJs -> ./polyfills/stubs.js
 // removed jsxDevProxy -> ./polyfills/misc.js
 // removed websimPackageJs -> ./polyfills/misc.js
+// avatarPolyfill -> ./polyfills/misc.js
 
 
 
