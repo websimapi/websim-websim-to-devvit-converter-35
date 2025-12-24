@@ -16,10 +16,11 @@ export function processJS(jsContent, filename = 'script.js', analyzer) {
     // Generic WebSim URL Replacements (Fix CSP issues & Hot-swap Identity)
     // We redirect WebSim avatar URLs to our local /api/proxy/avatar/:username endpoint.
     // This allows the server to look up the real Snoovatar on the fly.
-    code = code.replace(/https:\/\/images\.websim\.ai\/avatar\/|https:\/\/images\.websim\.com\/avatar\//g, '/api/proxy/avatar/');
+    // Enhanced regex to catch http/https, ai/com, and potential trailing slashes case-insensitively
+    code = code.replace(/https?:\/\/images\.websim\.(?:ai|com)\/avatar\/?/gi, '/api/proxy/avatar/');
     
     // Replace full literal avatar strings if found (e.g. "https://.../avatar/someuser")
-    code = code.replace(/["']https:\/\/images\.websim\.(ai|com)\/avatar\/([^"']+)["']/g, '"/api/proxy/avatar/$2"');
+    code = code.replace(/["']https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"']+)["']/gi, '"/api/proxy/avatar/$1"');
 
     // Calculate relative path to root for asset corrections
     const depth = (filename.match(/\//g) || []).length;

@@ -125,7 +125,7 @@ export function processHTML(htmlContent, filename, analyzer) {
 
     // 5. Replace WebSim Avatar URLs in HTML attributes
     // Replaces https://images.websim.ai/avatar/username with /api/proxy/avatar/username
-    html = html.replace(/https:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"'\s]+)/g, '/api/proxy/avatar/$1');
+    html = html.replace(/https?:\/\/images\.websim\.(?:ai|com)\/avatar\/([^"'\s]+)/gi, '/api/proxy/avatar/$1');
 
     return { html, extractedScripts };
 }
